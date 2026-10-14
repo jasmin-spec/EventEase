@@ -1,0 +1,8 @@
+{
+  "name": "eventease",
+  "private": true,
+  "dependencies": {
+    "@yudiel/react-qr-scanner": "^2.5.1",
+    "framer-motion": "^12.26.1"
+  }
+}
