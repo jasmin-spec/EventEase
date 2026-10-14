@@ -1,7 +1,8 @@
 
 export default function Footer() {
   return (
-  <footer className="bg-gray-900 text-white py-1 px-4 sm:px-6 mt-10 w-full">  // Show footer dta
+    //Show footer dta
+  <footer className="bg-gray-900 text-white py-1 px-4 sm:px-6 mt-10 w-full">  
   <div className="max-w-md mx-auto text-center">
     
     <h2 className="text-lg sm:text-xl font-bold mb-0">
