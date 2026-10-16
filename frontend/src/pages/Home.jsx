@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-import { Ticket, Search, LogOut, User, ArrowUpDown } from 'lucide-react';
+import { Ticket, Search, LogOut, User, ArrowUpDown, LoaderCircle } from 'lucide-react';
 import API_URL from '../config/api';
 import Footer from './Footer.jsx';
 import {
@@ -111,6 +111,17 @@ function GlobalLoadingSkeleton() {
     </div>
   );
 }
+// EVENT LOADING SPINNER
+function EventLoadingSpinner() {
+  return (
+    <div className="col-span-full flex flex-col items-center justify-center py-16">
+      <LoaderCircle className="w-12 h-12 text-rose-500 animate-spin" />
+      <p className="mt-4 text-sm font-semibold text-gray-500">
+        Loading events...
+      </p>
+    </div>
+  );
+}
 
 //NO EVENTS STATE
 function NoEventsState({ resetFilters }) {
@@ -148,11 +159,18 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-
+  const [currentSlide, setCurrentSlide] = useState(0);
   //Sorting
   const [sortBy, setSortBy] = useState("date-soon"); // Default : sort by : Soonest events first
 
   const navigate = useNavigate();
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % 3);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -329,7 +347,7 @@ export default function Home() {
 
         <div className="bg-[#1a1f36] border-t border-white/5 shadow-2xl">
           <div className="max-w-7xl mx-auto px-4 md:px-6">
-        <nav className="grid grid-flow-col auto-cols-max sm:flex sm:flex-wrap sm:justify-between sm:w-full items-center gap-2 sm:gap-3 lg:gap-4 py-3 overflow-x-auto sm:overflow-visible no-scrollbar">
+            <nav className="grid grid-flow-col auto-cols-max sm:flex sm:flex-wrap sm:justify-between sm:w-full items-center gap-2 sm:gap-3 lg:gap-4 py-3 overflow-x-auto sm:overflow-visible no-scrollbar">
               {categories.map((item) => {
                 const { Icon, color } = categoryIcons[item];
 
@@ -366,38 +384,132 @@ export default function Home() {
       </header>
 
       {/*HERO SECTION*/}
+
       {!searchQuery && (
         <section className="max-w-7xl mx-auto my-6 px-4 animate-fadeIn">
-        <div className="relative w-full aspect-[16/7] sm:aspect-[16/6] lg:aspect-[21/6] rounded-2xl overflow-hidden shadow-2xl group bg-gray-900">
+          <div className="relative w-full aspect-[16/7] sm:aspect-[16/6] lg:aspect-[21/6] rounded-2xl overflow-hidden shadow-2xl group bg-gray-900">
 
-            {/*Hero Skeleton Overlay*/}
+            {/* Hero Skeleton Overlay */}
             {!heroLoaded && <HeroImageSkeleton />}
 
-            {/*Hero Image*/}
-            <img
-              src="/poster bg login.png"
-              alt="Banner"
-              loading="eager"
-              onLoad={() => setHeroLoaded(true)}
-              className={`w-full h-full object-cover transition-all duration-1000 group-hover:scale-105
-                 ${heroLoaded ? 'opacity-100' : 'opacity-0'}
-              `}
-            />
+            {/* Hero Carousel Images */}
+            {[
+              "/poster bg login.png",
+              "/poster bg login1.png",
+              "/poster bg login2.png",
+            ].map((image, index) => (
+              <img
+                key={image}
+                src={image}
+                alt={`Banner ${index + 1}`}
+                loading={index === 0 ? "eager" : "lazy"}
+                onLoad={() => {
+                  if (index === currentSlide) setHeroLoaded(true);
+                }}
+                className={`absolute inset-0 w-full h-full object-cover
+            transition-all duration-1000 group-hover:scale-105
+            ${currentSlide === index && heroLoaded
+                    ? "opacity-100"
+                    : "opacity-0"
+                  }`}
+              />
+            ))}
 
-            {/*Text (Visible Immediately over skeleton)*/}
+            {/* Existing Gradient Overlay */}
             <div className="absolute inset-0 bg-linear-to-r from-black/80 to-transparent" />
+
+            {/* Existing Text */}
+
+            {/* Dynamic Text for Each Carousel Image */}
             <div className="absolute left-8 md:left-16 top-1/2 -translate-y-1/2 text-white max-w-lg z-10">
-              <h2 className="text-3xl md:text-5xl font-extrabold leading-tight">
-                Discover Unforgettable<br />
-                <span className="text-yellow-200">Events in 2026</span>
-              </h2>
-              <p className="mt-4 text-sm md:text-base text-gray-300 font-medium">
-                Curated Events • Seamless Booking • Unforgettable Experiences
-              </p>
+
+              {currentSlide === 0 && (
+                <>
+                  <h2 className="text-3xl md:text-5xl font-extrabold leading-tight">
+                    Discover Unforgettable<br />
+                    <span className="text-yellow-200">Events in 2026</span>
+                  </h2>
+                  <p className="mt-4 text-sm md:text-base text-gray-300 font-medium">
+                    Curated Events • Seamless Booking • Unforgettable Experiences
+                  </p>
+                </>
+              )}
+
+              {currentSlide === 1 && (
+                <>
+                  <h2 className="text-3xl md:text-5xl font-extrabold leading-tight">
+                    Experience the<br />
+                    <span className="text-yellow-200">Magic of Live Events</span>
+                  </h2>
+                  <p className="mt-4 text-sm md:text-base text-gray-300 font-medium">
+                    Live Shows • Exciting Festivals • Unforgettable Experiences
+                  </p>
+                </>
+              )}
+
+              {currentSlide === 2 && (
+                <>
+                  <h2 className="text-3xl md:text-5xl font-extrabold leading-tight">
+                    Feel the Thrill of<br />
+                    <span className="text-yellow-200">Live Sports Events</span>
+                  </h2>
+                  <p className="mt-4 text-sm md:text-base text-gray-300 font-medium">
+                    Live Matches • Passionate Fans • Unforgettable Action
+                  </p>
+                </>
+              )}
+
             </div>
+
+
+            {/* Previous Button */}
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentSlide((prev) => (prev + 2) % 3)
+              }
+              aria-label="Previous slide"
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-20
+          bg-black/40 text-white rounded-full p-3
+          opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              &#10094;
+            </button>
+
+            {/* Next Button */}
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentSlide((prev) => (prev + 1) % 3)
+              }
+              aria-label="Next slide"
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-20
+          bg-black/40 text-white rounded-full p-3
+          opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              &#10095;
+            </button>
+
+            {/* Carousel Indicator Dots */}
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+              {[0, 1, 2].map((index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setCurrentSlide(index)}
+                  aria-label={`Go to slide ${index + 1}`}
+                  className={`h-2.5 rounded-full transition-all duration-300 ${currentSlide === index
+                    ? "bg-yellow-200 w-7"
+                    : "bg-white/60 w-2.5"
+                    }`}
+                />
+              ))}
+            </div>
+
           </div>
         </section>
       )}
+
 
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-12">
@@ -437,10 +549,7 @@ export default function Home() {
         {/* GRID OF EVENTS */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-6 lg:gap-8">
           {loading ? (
-            // Show Card Skeletons only while fetching JSON data
-            Array.from({ length: 10 }).map((_, i) => (
-              <GlobalLoadingSkeleton key={i} />
-            ))
+            <EventLoadingSpinner />
           ) : filteredEvents.length === 0 ? (
             <NoEventsState resetFilters={() => { setSearchQuery(""); setSelectedCategory("All"); setSortBy("date-soon"); }} />
           ) : (

@@ -233,42 +233,74 @@ export default function EventDetails() {
         name: "EventEase",
         description: `Booking ${ticketCount} ticket(s) for ${event.title}`,
         order_id: order.id,
-        handler: async (response) => {
-          //START LOADING SCREEN
-          setIsVerifying(true);
 
-          try {
-            const verifyData = {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              eventId: event._id,
-              amount: totalAmount,
-              quantity: ticketCount,
-              isVip: isVip,
-              promoCode: promoApplied ? promoCode : '',
-              discount: discountAmount
-            };
+handler: async (response) => {
+     //START LOADING SCREEN
+  setIsVerifying(true);
 
-            const verifyResponse = await axios.post(
-              `${API_URL}/api/payments/verify`,
-              verifyData,
-              { headers: { Authorization: `Bearer ${token}` } }
-            );
+  const verifyStartedAt = Date.now();
 
-            // SUCCESS: Redirect
-            console.log("Verify success:", verifyResponse.data);
-            navigate('/my-bookings', { replace: true });
+  try {
+    const verifyData = {
+      razorpay_order_id: response.razorpay_order_id,
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_signature: response.razorpay_signature,
+      eventId: event._id,
+      amount: totalAmount,
+      quantity: ticketCount,
+      isVip: isVip,
+      promoCode: promoApplied ? promoCode : '',
+      discount: discountAmount
+    };
 
-          } catch (error) {
-            console.error("Verification error:", error);
-            // SAFETY FALLBACK: Redirect anyway because money was likely deducted
-            navigate('/my-bookings', { replace: true });
-          } finally {
-             // In case navigation fails for some reason
-             setIsVerifying(false);
-          }
+    console.log('[Payment] Verification started');
+
+    const verifyResponse = await axios.post(
+      `${API_URL}/api/payments/verify`,
+      verifyData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
         },
+        timeout: 60000
+      }
+    );
+      // SUCCESS: Redirect
+    console.log(
+      `[Payment] Verification completed in ${
+        Date.now() - verifyStartedAt
+      } ms`
+    );
+
+    console.log('[Payment] Verification response:', verifyResponse.data);
+
+   // SAFETY FALLBACK:  Redirect only after the backend confirms success.
+    // Adjust this condition if your backend uses another response format.
+    if (verifyResponse.status >= 200 && verifyResponse.status < 300) {
+      navigate('/my-bookings', { replace: true });
+    } else {
+      throw new Error('Payment verification was not confirmed.');
+    }
+
+  } catch (error) {
+    console.error('[Payment] Verification failed:', error);
+    console.error(
+      `[Payment] Time elapsed: ${
+        Date.now() - verifyStartedAt
+      } ms`
+    );
+
+    // Do not automatically retry payment or claim the booking succeeded.
+    // The payment may have been deducted even if verification timed out.
+    alert(
+      'We could not confirm your booking yet. Your payment may have been received. Please check My Bookings before attempting another payment.'
+    );
+
+  } finally {
+    setIsVerifying(false);
+  }
+},
+
         modal: {
             ondismiss: function() {
                 setIsVerifying(false); 
