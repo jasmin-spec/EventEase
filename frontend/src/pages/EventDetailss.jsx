@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import axios from 'axios';
-import { 
-  ArrowLeft, Calendar, MapPin, Ticket, ShieldCheck, 
-  Heart, Clock, Info, CheckCircle, Minus, Plus, Crown, Tag, Loader2 
+import {
+  ArrowLeft, Calendar, MapPin, Ticket, ShieldCheck,
+  Heart, Clock, Info, CheckCircle, Minus, Plus, Crown, Tag, Loader2
 } from 'lucide-react';
 import API_URL from '../config/api';
 
@@ -16,7 +16,7 @@ const extractUserIdFromToken = (token) => {
       return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
     const decoded = JSON.parse(jsonPayload);
-    return decoded.id; 
+    return decoded.id;
   } catch (error) {
     console.error('Error decoding token:', error);
     return null;
@@ -40,7 +40,7 @@ export default function EventDetails() {
   // Ticket & Pricing State
   const [ticketCount, setTicketCount] = useState(1);
   const [isVip, setIsVip] = useState(false);
-  
+
   // Promo Code State
   const [promoCode, setPromoCode] = useState('');
   const [promoDiscount, setPromoDiscount] = useState(0);
@@ -63,18 +63,18 @@ export default function EventDetails() {
       try {
         const { data } = await axios.get(`${API_URL}/api/events/single/${id}`);
         setEvent(data);
-        
+
         const count = data.likes ? data.likes.length : 0;
         setInterestCount(count);
 
         const token = localStorage.getItem('token');
         let userId = localStorage.getItem('userId');
-        
+
         if (token && !userId) {
           userId = extractUserIdFromToken(token);
           if (userId) localStorage.setItem('userId', userId);
         }
-        
+
         if (token && userId && data.likes && Array.isArray(data.likes)) {
           const isUserLiked = data.likes.some(likeId => String(likeId) === String(userId));
           setIsInterested(isUserLiked);
@@ -107,7 +107,7 @@ export default function EventDetails() {
   //PROMO CODE HANDLER
   const applyPromoCode = () => {
     const code = promoCode.trim().toUpperCase();
-    
+
     if (!code) {
       setPromoMessage('Please enter a promo code');
       setPromoDiscount(0);
@@ -149,7 +149,7 @@ export default function EventDetails() {
   //INTEREST HANDLER
   const handleInterest = async () => {
     const token = localStorage.getItem('token');
-    
+
     if (!token) {
       navigate('/login', { state: { from: location.pathname } });
       return;
@@ -164,13 +164,13 @@ export default function EventDetails() {
     try {
       const { data } = await axios.put(
         `${API_URL}/api/events/interest/${event._id}`,
-        {}, 
+        {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
+
       if (data.isLiked !== undefined) setIsInterested(data.isLiked);
       if (data.likeCount !== undefined) setInterestCount(data.likeCount);
-      
+
     } catch (error) {
       console.error("Failed to update interest:", error);
       setIsInterested(previousState);
@@ -198,10 +198,10 @@ export default function EventDetails() {
         navigate('/login', { state: { from: location.pathname } });
         return;
       }
-      
+
       // Calculate Amount
       const totalAmount = calculateFinalPrice();
-      
+
       // Calculate Discount Amount for Backend Record
       let basePrice = event.price * ticketCount;
       if (isVip) basePrice += 500;
@@ -214,7 +214,7 @@ export default function EventDetails() {
       // Create Order
       const orderResponse = await axios.post(
         `${API_URL}/api/payments/order`,
-        { 
+        {
           amount: totalAmount,
           eventId: event._id,
           quantity: ticketCount,
@@ -233,78 +233,59 @@ export default function EventDetails() {
         name: "EventEase",
         description: `Booking ${ticketCount} ticket(s) for ${event.title}`,
         order_id: order.id,
+        handler: async (response) => {
+          //START LOADING SCREEN
+          setIsVerifying(true);
 
-handler: async (response) => {
-     //START LOADING SCREEN
-  setIsVerifying(true);
+          try {
+            const verifyData = {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              eventId: event._id,
+              amount: totalAmount,
+              quantity: ticketCount,
+              isVip: isVip,
+              promoCode: promoApplied ? promoCode : '',
+              discount: discountAmount
+            };
 
-  const verifyStartedAt = Date.now();
 
-  try {
-    const verifyData = {
-      razorpay_order_id: response.razorpay_order_id,
-      razorpay_payment_id: response.razorpay_payment_id,
-      razorpay_signature: response.razorpay_signature,
-      eventId: event._id,
-      amount: totalAmount,
-      quantity: ticketCount,
-      isVip: isVip,
-      promoCode: promoApplied ? promoCode : '',
-      discount: discountAmount
-    };
+            const verifyStart = performance.now();
 
-    console.log('[Payment] Verification started');
+            const verifyResponse = await axios.post(
+              `${API_URL}/api/payments/verify`,
+              verifyData,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
 
-    const verifyResponse = await axios.post(
-      `${API_URL}/api/payments/verify`,
-      verifyData,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
+            console.log(
+              `Payment verification API took ${((performance.now() - verifyStart) / 1000).toFixed(2)
+              } seconds`
+            );
+
+            // SUCCESS: Redirect
+            console.log("Verify success:", verifyResponse.data);
+            navigate('/my-bookings', { replace: true });
+
+
+          } catch (error) {
+            console.error("Verification error:", error);
+            // SAFETY FALLBACK: Redirect anyway because money was likely deducted
+            navigate('/my-bookings', { replace: true });
+          } finally {
+            // In case navigation fails for some reason
+            setIsVerifying(false);
+          }
         },
-        timeout: 60000
-      }
-    );
-      // SUCCESS: Redirect
-    console.log(
-      `[Payment] Verification completed in ${
-        Date.now() - verifyStartedAt
-      } ms`
-    );
-
-    console.log('[Payment] Verification response:', verifyResponse.data);
-
-   // SAFETY FALLBACK:  Redirect only after the backend confirms success.
-    // Adjust this condition if your backend uses another response format.
-    if (verifyResponse.status >= 200 && verifyResponse.status < 300) {
-      navigate('/my-bookings', { replace: true });
-    } else {
-      throw new Error('Payment verification was not confirmed.');
-    }
-
-  } catch (error) {
-    console.error('[Payment] Verification failed:', error);
-    console.error(
-      `[Payment] Time elapsed: ${
-        Date.now() - verifyStartedAt
-      } ms`
-    );
-
-    // Do not automatically retry payment or claim the booking succeeded.
-    // The payment may have been deducted even if verification timed out.
-    alert(
-      'We could not confirm your booking yet. Your payment may have been received. Please check My Bookings before attempting another payment.'
-    );
-
-  } finally {
-    setIsVerifying(false);
-  }
-},
-
         modal: {
-            ondismiss: function() {
-                setIsVerifying(false); 
-            }
+          ondismiss: function () {
+            setIsVerifying(false);
+          }
         },
         theme: { color: "#dc2626" },
       };
@@ -324,14 +305,14 @@ handler: async (response) => {
     <div className="min-h-screen flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm z-50 fixed inset-0">
       <div className="flex flex-col items-center space-y-6 animate-in fade-in duration-500">
         <div className="relative">
-           <div className="absolute inset-0 bg-green-100 rounded-full animate-ping opacity-75"></div>
-           <div className="relative bg-white p-4 rounded-full shadow-xl border-2 border-green-100">
-             <ShieldCheck className="w-12 h-12 text-green-600 animate-pulse" />
-           </div>
+          <div className="absolute inset-0 bg-green-100 rounded-full animate-ping opacity-75"></div>
+          <div className="relative bg-white p-4 rounded-full shadow-xl border-2 border-green-100">
+            <ShieldCheck className="w-12 h-12 text-green-600 animate-pulse" />
+          </div>
         </div>
         <div className="text-center space-y-2">
-           <h3 className="text-2xl font-bold text-gray-900">Verifying Payment</h3>
-           <p className="text-gray-500 max-w-xs mx-auto">Please wait while we confirm your booking and send your tickets...</p>
+          <h3 className="text-2xl font-bold text-gray-900">Verifying Payment</h3>
+          <p className="text-gray-500 max-w-xs mx-auto">Please wait while we confirm your booking and send your tickets...</p>
         </div>
         <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
       </div>
@@ -357,8 +338,8 @@ handler: async (response) => {
         </div>
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Event Not Found</h2>
         <p className="text-gray-500 mb-6">The event you are looking for might have been removed.</p>
-        <button 
-          onClick={() => navigate('/')} 
+        <button
+          onClick={() => navigate('/')}
           className="w-full bg-gray-900 text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors"
         >
           Return to Home
@@ -369,44 +350,44 @@ handler: async (response) => {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-24 lg:pb-12">
-      
+
       {/* Navigation Bar */}
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <button 
-            onClick={() => navigate('/')} 
+          <button
+            onClick={() => navigate('/')}
             className="flex items-center text-gray-600 hover:text-gray-900 transition-colors group p-2 -ml-2 rounded-lg hover:bg-gray-100"
           >
             <ArrowLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" />
             <span className="font-medium">Back</span>
           </button>
-          
+
           <div className="text-sm font-semibold text-gray-400 hidden sm:block">
             Event Details
           </div>
 
           {!localStorage.getItem('token') && (
-             <button 
-               onClick={() => navigate('/login', { state: { from: location.pathname } })}
-               className="text-sm font-semibold text-red-600 px-4 py-2 rounded-full hover:bg-red-50 transition-colors"
-             >
-               Sign In
-             </button>
+            <button
+              onClick={() => navigate('/login', { state: { from: location.pathname } })}
+              className="text-sm font-semibold text-red-600 px-4 py-2 rounded-full hover:bg-red-50 transition-colors"
+            >
+              Sign In
+            </button>
           )}
         </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-          
+
           {/* LEFT COLUMN: Content */}
           <div className="lg:col-span-8 space-y-8">
-            
+
             {/* Hero Image Section */}
             <div className="relative rounded-3xl overflow-hidden shadow-xl aspect-video lg:aspect-21/9 bg-gray-200 group">
-              <img 
-                src={event.coverImage} 
-                alt={event.title} 
+              <img
+                src={event.coverImage}
+                alt={event.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-in-out"
               />
               <div className="absolute top-4 right-4 bg-white/90 backdrop-blur text-gray-900 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm flex items-center gap-1.5">
@@ -482,7 +463,7 @@ handler: async (response) => {
           {/* RIGHT COLUMN: Sticky Pricing & Action */}
           <div className="lg:col-span-4">
             <div className="sticky top-24 space-y-6">
-              
+
               {/* DESKTOP PRICING CARD */}
               <div className="hidden lg:block bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 <div className="bg-gray-900 p-6 text-white text-center relative overflow-hidden">
@@ -495,38 +476,38 @@ handler: async (response) => {
                     </div>
                     {/* Shows unit price calculation with discount breakdown */}
                     <p className="text-xs text-gray-400 mt-1">
-                       (₹{event.price} × {ticketCount} tickets{isVip ? ' + ₹500 VIP' : ''}{promoApplied ? ` - ₹${Math.floor((event.price * ticketCount + (isVip ? 500 : 0)) * promoDiscount / 100) || promoDiscount} OFF` : ''})
+                      (₹{event.price} × {ticketCount} tickets{isVip ? ' + ₹500 VIP' : ''}{promoApplied ? ` - ₹${Math.floor((event.price * ticketCount + (isVip ? 500 : 0)) * promoDiscount / 100) || promoDiscount} OFF` : ''})
                     </p>
                   </div>
                 </div>
 
                 <div className="p-6 sm:p-8">
-                  
+
                   {/*NUMBER OF TICKETS SELECTOR*/}
                   <div className="mb-8">
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wide block mb-3">
-                        Number of Tickets
+                      Number of Tickets
                     </label>
                     <div className="flex items-center justify-between bg-gray-50 rounded-xl p-2 border border-gray-200">
-                        <button 
-                            onClick={decrementTickets}
-                            disabled={ticketCount <= 1}
-                            className="w-10 h-10 flex items-center justify-center bg-white rounded-lg shadow-sm border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <Minus className="w-4 h-4" />
-                        </button>
-                        
-                        <span className="text-xl font-bold text-gray-900 w-12 text-center">
-                            {ticketCount}
-                        </span>
+                      <button
+                        onClick={decrementTickets}
+                        disabled={ticketCount <= 1}
+                        className="w-10 h-10 flex items-center justify-center bg-white rounded-lg shadow-sm border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
 
-                        <button 
-                            onClick={incrementTickets}
-                            disabled={ticketCount >= event.availableTickets}
-                            className="w-10 h-10 flex items-center justify-center bg-white rounded-lg shadow-sm border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                        </button>
+                      <span className="text-xl font-bold text-gray-900 w-12 text-center">
+                        {ticketCount}
+                      </span>
+
+                      <button
+                        onClick={incrementTickets}
+                        disabled={ticketCount >= event.availableTickets}
+                        className="w-10 h-10 flex items-center justify-center bg-white rounded-lg shadow-sm border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                   {/* --------------------------------- */}
@@ -541,9 +522,9 @@ handler: async (response) => {
                           <p className="text-xs text-gray-600">Premium Experience +₹500</p>
                         </div>
                       </div>
-                      <input 
-                        type="checkbox" 
-                        checked={isVip} 
+                      <input
+                        type="checkbox"
+                        checked={isVip}
                         onChange={() => setIsVip(!isVip)}
                         className="w-5 h-5 accent-amber-600 cursor-pointer"
                       />
@@ -557,9 +538,9 @@ handler: async (response) => {
                       <Tag className="w-5 h-5 text-blue-600" />
                       <label className="text-sm font-bold text-gray-900">Promo Code</label>
                     </div>
-                    
+
                     <div className="flex gap-2 mb-2">
-                      <input 
+                      <input
                         type="text"
                         placeholder="Enter promo code"
                         value={promoCode}
@@ -567,7 +548,7 @@ handler: async (response) => {
                         onKeyPress={(e) => e.key === 'Enter' && applyPromoCode()}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                       />
-                      <button 
+                      <button
                         onClick={applyPromoCode}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm transition-colors"
                       >
@@ -598,12 +579,12 @@ handler: async (response) => {
                     </div>
                   </div>
 
-                  <button 
+                  <button
                     onClick={handlePayment}
                     disabled={event.availableTickets <= 0}
                     className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform active:scale-[0.98] 
-                      ${event.availableTickets > 0 
-                        ? 'bg-red-600 text-white hover:bg-red-700 hover:shadow-red-500/30' 
+                      ${event.availableTickets > 0
+                        ? 'bg-red-600 text-white hover:bg-red-700 hover:shadow-red-500/30'
                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                   >
                     {event.availableTickets > 0 ? `Book ${ticketCount} Ticket${ticketCount > 1 ? 's' : ''}` : 'Sold Out'}
@@ -631,30 +612,30 @@ handler: async (response) => {
 
               {/* INTERESTED BUTTON */}
               <div className="bg-pink-50 rounded-2xl p-5 border border-pink-100 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm">Interested?</p>
-                        <p className="text-xs text-gray-500 mt-1">Save it for later</p>
-                      </div>
-                      <Heart className={`w-6 h-6 ${isInterested ? "fill-pink-500 text-pink-500" : "text-gray-400"}`} />
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-bold text-gray-900 text-sm">Interested?</p>
+                    <p className="text-xs text-gray-500 mt-1">Save it for later</p>
                   </div>
-                  
-                  <button
-                      onClick={handleInterest}
-                      className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 border
-                        ${isInterested 
-                          ? 'bg-pink-600 text-white border-pink-600 hover:bg-pink-700 shadow-md shadow-pink-200' 
-                          : 'bg-white text-gray-700 border-gray-200 hover:border-pink-300 hover:text-pink-600'
-                        }`}
-                  >
-                      {isInterested ? (
-                          <span className="flex items-center justify-center gap-2">
-                              <CheckCircle className="w-4 h-4" /> Already Liked
-                          </span>
-                      ) : (
-                          "Mark as Interested"
-                      )}
-                  </button>
+                  <Heart className={`w-6 h-6 ${isInterested ? "fill-pink-500 text-pink-500" : "text-gray-400"}`} />
+                </div>
+
+                <button
+                  onClick={handleInterest}
+                  className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 border
+                        ${isInterested
+                      ? 'bg-pink-600 text-white border-pink-600 hover:bg-pink-700 shadow-md shadow-pink-200'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-pink-300 hover:text-pink-600'
+                    }`}
+                >
+                  {isInterested ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <CheckCircle className="w-4 h-4" /> Already Liked
+                    </span>
+                  ) : (
+                    "Mark as Interested"
+                  )}
+                </button>
               </div>
 
             </div>
@@ -665,15 +646,15 @@ handler: async (response) => {
 
       {/*MOBILE STICKY FOOTER */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50 lg:hidden shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
-        
+
         {/* Mobile Ticket Selector Row */}
         <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100">
-           <span className="text-xs font-bold text-gray-500 uppercase">Tickets:</span>
-           <div className="flex items-center gap-3">
-              <button onClick={decrementTickets} disabled={ticketCount <= 1} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 disabled:opacity-50"><Minus className="w-3 h-3"/></button>
-              <span className="font-bold text-gray-900">{ticketCount}</span>
-              <button onClick={incrementTickets} disabled={ticketCount >= event.availableTickets} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 disabled:opacity-50"><Plus className="w-3 h-3"/></button>
-           </div>
+          <span className="text-xs font-bold text-gray-500 uppercase">Tickets:</span>
+          <div className="flex items-center gap-3">
+            <button onClick={decrementTickets} disabled={ticketCount <= 1} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 disabled:opacity-50"><Minus className="w-3 h-3" /></button>
+            <span className="font-bold text-gray-900">{ticketCount}</span>
+            <button onClick={incrementTickets} disabled={ticketCount >= event.availableTickets} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg text-gray-600 disabled:opacity-50"><Plus className="w-3 h-3" /></button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -683,12 +664,12 @@ handler: async (response) => {
               <span className="text-2xl font-black text-gray-900">₹{calculateFinalPrice()}</span>
             </div>
           </div>
-          <button 
+          <button
             onClick={handlePayment}
             disabled={event.availableTickets <= 0}
             className={`flex-1 px-4 py-3 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 
-              ${event.availableTickets > 0 
-                ? 'bg-red-600 hover:bg-red-700' 
+              ${event.availableTickets > 0
+                ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-gray-400 cursor-not-allowed'}`}
           >
             {event.availableTickets > 0 ? 'Book Now' : 'Sold Out'}
